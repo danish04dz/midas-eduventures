@@ -81,9 +81,29 @@ router.get('/faculty/:facultyName', async (req, res) => {
     const timetable = await Timetable.findOne().sort({ updatedAt: -1 });
     if (!timetable) return res.json([]);
 
-    const assignedSlots = timetable.slots.filter(s => 
-      s.facultyName.toLowerCase().includes(facultyName.toLowerCase())
-    );
+    const assignedSlots = [];
+    const lowerSearch = facultyName.toLowerCase();
+
+    timetable.slots.forEach(s => {
+      if (s.isSplit && s.subSlots && s.subSlots.length > 0) {
+        const matchingSub = s.subSlots.find(sub => 
+          sub.facultyName && sub.facultyName.toLowerCase().includes(lowerSearch)
+        );
+        if (matchingSub) {
+          assignedSlots.push({
+            ...s.toObject(),
+            // Expose active subSlot details for faculty view
+            subject: matchingSub.subject || s.subject,
+            facultyName: matchingSub.facultyName,
+            groupInfo: matchingSub.groupInfo || matchingSub.grade || s.groupInfo,
+            timeRange: matchingSub.timeRange ? `${s.timeRange} (${matchingSub.timeRange})` : s.timeRange,
+            subSlotDetails: matchingSub
+          });
+        }
+      } else if (s.facultyName && s.facultyName.toLowerCase().includes(lowerSearch)) {
+        assignedSlots.push(s);
+      }
+    });
 
     res.json(assignedSlots);
   } catch (err) {

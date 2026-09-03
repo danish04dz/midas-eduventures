@@ -159,13 +159,27 @@ function generateTimetablePDF(ttData) {
 
           const slotItem = slots.find(s => s.day === day && s.slotNumber === slotNum && (s.house === house || s.house === 'All Houses'));
           if (slotItem) {
-            // Subject Name
-            doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a').text(slotItem.subject || 'Activity', xOffset + 10, y + 5, { width: cellWidth - 14 });
-            // Faculty Name
-            doc.font('Helvetica-Bold').fontSize(8).fillColor(hTheme.primary).text(slotItem.facultyName || 'TBA', xOffset + 10, y + 18);
-            // House Name & Group Info Badge Text
-            doc.font('Helvetica').fontSize(7.5).fillColor('#475569').text(`House: ${house}`, xOffset + 10, y + 29);
-            doc.font('Helvetica').fontSize(7).fillColor('#64748b').text(`(${slotItem.groupInfo || slotItem.grade || 'All Groups'})`, xOffset + 10, y + 37);
+            if (slotItem.isSplit && slotItem.subSlots && slotItem.subSlots.length > 0) {
+              const sub1 = slotItem.subSlots[0] || {};
+              const sub2 = slotItem.subSlots[1] || {};
+              
+              // Sub 1
+              doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#0f172a').text(`1. ${sub1.subject || 'Activity'}`, xOffset + 8, y + 3, { width: cellWidth - 12 });
+              doc.font('Helvetica').fontSize(7).fillColor(hTheme.primary).text(`${sub1.facultyName || 'TBA'} (${sub1.groupInfo || sub1.grade || 'Grp 1'})`, xOffset + 8, y + 13);
+              
+              // Dashed horizontal divider
+              doc.moveTo(xOffset + 6, y + 24).lineTo(xOffset + cellWidth - 6, y + 24).dash(2, { space: 2 }).stroke('#cbd5e1').undash();
+              
+              // Sub 2
+              doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#0f172a').text(`2. ${sub2.subject || 'Activity'}`, xOffset + 8, y + 27, { width: cellWidth - 12 });
+              doc.font('Helvetica').fontSize(7).fillColor(hTheme.primary).text(`${sub2.facultyName || 'TBA'} (${sub2.groupInfo || sub2.grade || 'Grp 2'})`, xOffset + 8, y + 37);
+            } else {
+              // Single Slot
+              doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a').text(slotItem.subject || 'Activity', xOffset + 10, y + 5, { width: cellWidth - 14 });
+              doc.font('Helvetica-Bold').fontSize(8).fillColor(hTheme.primary).text(slotItem.facultyName || 'TBA', xOffset + 10, y + 18);
+              doc.font('Helvetica').fontSize(7.5).fillColor('#475569').text(`House: ${house}`, xOffset + 10, y + 29);
+              doc.font('Helvetica').fontSize(7).fillColor('#64748b').text(`(${slotItem.groupInfo || slotItem.grade || 'All Groups'})`, xOffset + 10, y + 37);
+            }
           } else {
             doc.font('Helvetica-Oblique').fontSize(8).fillColor('#94a3b8').text('Unassigned Slot', xOffset + 10, y + 20);
           }
