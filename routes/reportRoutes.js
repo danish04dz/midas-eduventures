@@ -8,6 +8,7 @@ const DailyReport = require('../models/DailyReport');
 const User = require('../models/User');
 const { generateWeeklyReportPDF } = require('../utils/pdfGenerator');
 const { sendWeeklyReportEmail } = require('../utils/emailService');
+const { getRealTimeWeekInfo } = require('../utils/dateHelper');
 
 // Utility function to automatically calculate Month Name and Week Number from current date
 function getAutoMonthAndWeek(dateInput = new Date()) {
@@ -71,18 +72,33 @@ router.post('/upload', upload.single('image'), async (req, res) => {
   res.json({ url: localUrl });
 });
 
-// GET all Daily Reports
+// GET all Daily Reports (Supports weekTitle, day-wise, date picker, faculty, subject, batch filters)
 router.get('/', async (req, res) => {
   try {
-    const { facultyId, facultyName, subject, weekTitle, date } = req.query;
+    const { facultyId, facultyName, subject, weekTitle, date, day, batch } = req.query;
     const filter = {};
+    const realTimeInfo = getRealTimeWeekInfo();
+
+    if (batch) filter.batch = batch;
     if (facultyId) filter.facultyId = facultyId;
     if (facultyName && facultyName !== 'ALL') filter.facultyName = new RegExp(facultyName, 'i');
-    if (subject) filter.subject = new RegExp(subject, 'i');
-    if (weekTitle) filter.weekTitle = weekTitle;
-    if (date) filter.date = date;
+    if (subject && subject !== 'ALL') filter.subject = new RegExp(subject, 'i');
+    if (day && day !== 'ALL') filter.day = new RegExp(day.trim(), 'i');
 
-    const reports = await DailyReport.find(filter).sort({ date: 1, createdAt: 1 });
+    if (date && date.trim()) {
+      filter.$or = [
+        { date: new RegExp(date.trim(), 'i') },
+        { formattedDateStr: new RegExp(date.trim(), 'i') }
+      ];
+    } else if (weekTitle && weekTitle !== 'ALL') {
+      filter.$or = [
+        { weekTitle: weekTitle },
+        { weekTitle: realTimeInfo.weekTitle },
+        { date: { $gte: realTimeInfo.startDate, $lte: realTimeInfo.endDate } }
+      ];
+    }
+
+    const reports = await DailyReport.find(filter).sort({ date: -1, createdAt: -1 });
     res.json(reports);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -104,26 +120,84 @@ router.post('/', async (req, res) => {
       takenSessions,
       isHoliday,
       sessions,
-      images
+      images,
+      batch
     } = req.body;
+
+    const reportDate = date ? new Date(date) : new Date();
+    const computedWeekInfo = getRealTimeWeekInfo(reportDate);
 
     const report = new DailyReport({
       facultyId,
       facultyName,
       subject,
-      weekTitle: weekTitle || 'WEEK: 24 Aug - 29 Aug 2026',
-      date,
-      formattedDateStr: formattedDateStr || date,
-      day,
+      weekTitle: weekTitle || computedWeekInfo.weekTitle,
+      date: date || new Date().toISOString().split('T')[0],
+      formattedDateStr: formattedDateStr || computedWeekInfo.currentDateFormatted,
+      day: day || computedWeekInfo.todayDayCode,
       allocatedSessions: Number(allocatedSessions) || 1,
       takenSessions: Number(takenSessions) || 1,
       isHoliday: Boolean(isHoliday),
       sessions: sessions || [],
-      images: images || []
+      images: images || [],
+      batch: batch || 'evening'
     });
 
     await report.save();
     res.status(201).json({ message: 'Daily Report submitted successfully', report });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// PUT Edit / Update Daily Report (Faculty)
+router.put('/:id', async (req, res) => {
+  try {
+    const report = await DailyReport.findById(req.params.id);
+    if (!report) return res.status(404).json({ message: 'Report not found' });
+
+    const {
+      date,
+      formattedDateStr,
+      day,
+      subject,
+      allocatedSessions,
+      takenSessions,
+      isHoliday,
+      sessions,
+      images,
+      batch
+    } = req.body;
+
+    if (date !== undefined) report.date = date;
+    if (formattedDateStr !== undefined) report.formattedDateStr = formattedDateStr;
+    if (day !== undefined) report.day = day;
+    if (subject !== undefined) report.subject = subject;
+    if (allocatedSessions !== undefined) report.allocatedSessions = Number(allocatedSessions);
+    if (takenSessions !== undefined) report.takenSessions = Number(takenSessions);
+    if (isHoliday !== undefined) report.isHoliday = Boolean(isHoliday);
+    if (sessions !== undefined) report.sessions = sessions;
+    if (images !== undefined) report.images = images;
+    if (batch !== undefined) report.batch = batch;
+
+    if (date) {
+      const computedWeekInfo = getRealTimeWeekInfo(new Date(date));
+      report.weekTitle = computedWeekInfo.weekTitle;
+    }
+
+    await report.save();
+    res.json({ message: 'Report updated successfully', report });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE Daily Report (Faculty)
+router.delete('/:id', async (req, res) => {
+  try {
+    const report = await DailyReport.findByIdAndDelete(req.params.id);
+    if (!report) return res.status(404).json({ message: 'Report not found' });
+    res.json({ message: 'Report deleted successfully' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -148,35 +222,69 @@ router.put('/:id/remark', async (req, res) => {
   }
 });
 
-// GET Download Weekly PDF Report (All Teachers Combined OR Specific Teacher)
+// GET Download Weekly / Daily PDF Report (Supports weekTitle, day-wise, date picker, faculty, subject, batch filters)
 router.get('/download-pdf', async (req, res) => {
   try {
-    const { weekTitle = 'WEEK: 24 Aug - 29 Aug 2026', facultyName = 'ALL' } = req.query;
-    
-    const filter = { weekTitle };
+    const realTimeInfo = getRealTimeWeekInfo();
+    let { 
+      weekTitle = realTimeInfo.weekTitle, 
+      facultyName = 'ALL',
+      subject,
+      day,
+      date,
+      batch = 'evening'
+    } = req.query;
+
+    const filter = {};
+    if (batch) filter.batch = batch;
     if (facultyName && facultyName !== 'ALL') {
       filter.facultyName = new RegExp(facultyName, 'i');
     }
+    if (subject && subject !== 'ALL') {
+      filter.subject = new RegExp(subject, 'i');
+    }
+    if (day && day !== 'ALL') {
+      filter.day = new RegExp(day.trim(), 'i');
+    }
 
-    const dailyReports = await DailyReport.find(filter).sort({ date: 1 });
+    if (date && date.trim()) {
+      filter.$or = [
+        { date: new RegExp(date.trim(), 'i') },
+        { formattedDateStr: new RegExp(date.trim(), 'i') }
+      ];
+    } else {
+      filter.$or = [
+        { weekTitle: weekTitle },
+        { weekTitle: realTimeInfo.weekTitle },
+        { date: { $gte: realTimeInfo.startDate, $lte: realTimeInfo.endDate } }
+      ];
+    }
 
+    const dailyReports = await DailyReport.find(filter).sort({ date: -1, createdAt: -1 });
+
+    const isMorning = batch === 'morning';
     const displayFacultyName = facultyName === 'ALL' ? 'All Teachers (Combined Report)' : facultyName;
+    const headerTitle = date ? `Daily Curriculum Log (${date})` : (day && day !== 'ALL' ? `Day Report (${day})` : realTimeInfo.weekTitle);
+    const defaultSubjectHeader = isMorning
+      ? 'Morning Main School Academic Curriculum Report'
+      : 'Evening House Activity & Curriculum Weekly Report';
 
     const pdfBuffer = await generateWeeklyReportPDF({
       schoolName: 'MIDAS CONCEPT SCHOOL',
       tagline: 'Where every mind learns to lead and shine',
-      weekTitle: weekTitle.includes('WEEK:') ? weekTitle : `Weekly Report (${weekTitle})`,
-      weekRange: weekTitle,
-      subject: 'Evening House Activity & Extra-Curricular Weekly Report',
+      weekTitle: headerTitle,
+      weekRange: realTimeInfo.weekTitle,
+      subject: subject && subject !== 'ALL' ? subject : defaultSubjectHeader,
       facultyName: displayFacultyName,
       customLogoPath: currentSchoolLogoPath,
       dailyReports
     });
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=Midas_Weekly_Report_${facultyName.replace(/\s+/g, '_')}_${Date.now()}.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename=Midas_${isMorning ? 'Morning' : 'Evening'}_Curriculum_Report_${Date.now()}.pdf`);
     res.send(pdfBuffer);
   } catch (err) {
+    console.error('[PDF Generation Error]', err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -184,11 +292,16 @@ router.get('/download-pdf', async (req, res) => {
 // POST Send Weekly Report Email to Principal via Nodemailer (AUTOMATIC MONTH & WEEK NO. FROM CURRENT DATE)
 router.post('/send-email', async (req, res) => {
   try {
-    const { 
-      weekTitle = 'WEEK: 24 Aug - 29 Aug 2026', 
+    const realTimeInfo = getRealTimeWeekInfo();
+    let { 
+      weekTitle = realTimeInfo.weekTitle, 
       facultyName = 'ALL',
-      principalEmail
+      principalEmail,
+      batch = 'evening'
     } = req.body;
+    if (weekTitle.includes('24 Aug - 29 Aug 2026')) {
+      weekTitle = realTimeInfo.weekTitle;
+    }
 
     // Automatically calculate Month Name and Week Number from current date
     const autoDate = getAutoMonthAndWeek(new Date());
@@ -196,33 +309,38 @@ router.post('/send-email', async (req, res) => {
     const weekNo = req.body.weekNo || autoDate.weekNo;
 
     const filter = { weekTitle };
+    if (batch) filter.batch = batch;
     if (facultyName && facultyName !== 'ALL') {
       filter.facultyName = new RegExp(facultyName, 'i');
     }
 
     const dailyReports = await DailyReport.find(filter).sort({ date: 1 });
+    const isMorning = batch === 'morning';
     const targetFacultyStr = facultyName === 'ALL' ? 'All Teachers Combined' : facultyName;
+    const scopeSubject = isMorning 
+      ? 'Morning Main School Academic Curriculum Weekly Report' 
+      : 'Evening House Activity & Extra-Curricular Weekly Report';
 
     const pdfBuffer = await generateWeeklyReportPDF({
       schoolName: 'MIDAS CONCEPT SCHOOL',
       tagline: 'Where every mind learns to lead and shine',
       weekTitle: `WEEKLY REPORT (${monthName})`,
       weekRange: `Week ${weekNo}: (${weekTitle})`,
-      subject: 'Evening House Activity & Extra-Curricular Weekly Report',
+      subject: scopeSubject,
       facultyName: targetFacultyStr,
       customLogoPath: currentSchoolLogoPath,
       dailyReports
     });
 
-    // Professional Subject line featuring AUTOMATIC Month Name & Week Number
-    const emailSubject = `Official Academic Weekly Curriculum Report - Midas Concept School, Sausar (${monthName}, Week ${weekNo}) [${targetFacultyStr}]`;
+    const emailSubject = `Official ${isMorning ? 'Morning Academic' : 'Evening Activity'} Weekly Curriculum Report - Midas Concept School, Sausar (${monthName}, Week ${weekNo}) [${targetFacultyStr}]`;
     
     const emailBody = `Dear Principal,\n\nPlease find attached the Weekly Curriculum Tracking Report for Midas Concept School Sausar.\n\n` +
       `📅 Period: ${monthName} (Week ${weekNo})\n` +
-      `📌 Activity Scope: Evening House Activity & Extra-Curricular Weekly Report\n` +
+      `📌 Branch: ${isMorning ? 'MORNING MAIN SCHOOL BATCH' : 'EVENING EXTRA-CURRICULAR ACTIVITY'}\n` +
+      `📌 Scope: ${scopeSubject}\n` +
       `👨‍🏫 Faculty Scope: ${targetFacultyStr}\n` +
       `📊 Total Daily Session Logs: ${dailyReports.length}\n\n` +
-      `The attached PDF contains complete details including Date, Sessions Allocated vs Taken, House Rotations (Gryffindor, Slytherin, Hufflepuff, Ravenclaw), Present Student Counts, Topics Covered, and Principal Remarks.\n\n` +
+      `The attached PDF contains complete details including Date, Sessions Allocated vs Taken, Present Student Counts, Topics Covered, and Principal Remarks.\n\n` +
       `Best regards,\nMidas Eduventures Academic System`;
 
     const result = await sendWeeklyReportEmail({
@@ -230,21 +348,15 @@ router.post('/send-email', async (req, res) => {
       subject: emailSubject,
       text: emailBody,
       pdfBuffer,
-      filename: `Midas_Weekly_Report_${monthName.replace(/\s+/g, '_')}_Week${weekNo}_${targetFacultyStr.replace(/\s+/g, '_')}.pdf`,
-      logCount: dailyReports.length,
-      scopeTitle: `Evening House Activity & Extra-Curricular Weekly Report (${targetFacultyStr})`,
-      periodStr: `${monthName} (Week ${weekNo})`
+      filename: `Midas_${isMorning ? 'Morning' : 'Evening'}_Weekly_Report_${monthName.replace(/\s+/g, '_')}_Week${weekNo}.pdf`
     });
 
     res.json({
-      message: `Weekly Report PDF successfully emailed to Principal (${result.recipient})!`,
+      message: `Weekly Curriculum Report PDF successfully sent via email (${result.recipient})!`,
       subject: emailSubject,
-      previewUrl: result.previewUrl,
-      recipient: result.recipient,
-      autoCalculated: { monthName, weekNo }
+      previewUrl: result.previewUrl
     });
   } catch (err) {
-    console.error('[Send Email Error]', err);
     res.status(500).json({ message: err.message });
   }
 });

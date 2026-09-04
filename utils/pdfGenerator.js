@@ -2,6 +2,8 @@ const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
 
+const { getRealTimeWeekInfo } = require('./dateHelper');
+
 /**
  * House Color Palette Definitions
  */
@@ -24,11 +26,12 @@ function generateWeeklyReportPDF(reportData) {
     doc.on('end', () => resolve(Buffer.concat(buffers)));
     doc.on('error', err => reject(err));
 
+    const realTimeInfo = getRealTimeWeekInfo();
     const {
       schoolName = 'MIDAS CONCEPT SCHOOL',
       tagline = 'Where every mind learns to lead and shine',
-      weekTitle = 'Weekly Report (AUGUST 2026)',
-      weekRange = 'Week: 24 Aug - 29 Aug 2026',
+      weekTitle = `Weekly Report (${realTimeInfo.monthName})`,
+      weekRange = realTimeInfo.weekTitle,
       subject = 'Evening House Activity & Extra-Curricular Weekly Report',
       facultyName = 'All Teachers (Combined)',
       dailyReports = []
@@ -81,12 +84,20 @@ function generateTimetablePDF(ttData) {
     doc.on('end', () => resolve(Buffer.concat(buffers)));
     doc.on('error', err => reject(err));
 
+    const realTimeInfo = getRealTimeWeekInfo();
+    let displayWeekTitle = ttData.weekTitle;
+    if (!displayWeekTitle || displayWeekTitle.includes('24 Aug - 29 Aug 2026')) {
+      displayWeekTitle = realTimeInfo.weekTitle;
+    }
+
     const {
-      weekTitle = 'WEEK: 24 Aug - 29 Aug 2026',
       selectedDay = 'ALL',
-      slots = []
+      slots = [],
+      morningTimeSlots = [],
+      batch = 'evening'
     } = ttData;
 
+    const isMorning = batch === 'morning';
     const logoFileToUse = path.join(__dirname, '../../client/src/assets/midas_logo-removebg-preview.png');
 
     // Header Container
@@ -103,101 +114,177 @@ function generateTimetablePDF(ttData) {
     }
 
     doc.font('Helvetica-Bold').fontSize(16).fillColor('#0f172a').text('MIDAS CONCEPT SCHOOL', 110, 34);
-    doc.font('Helvetica-Oblique').fontSize(9).fillColor('#64748b').text('Master Evening House Activity Timetable', 110, 54);
+    doc.font('Helvetica-Oblique').fontSize(9).fillColor('#4338ca').text(
+      isMorning ? 'Morning Main School Academic Timetable' : 'Master Evening House Activity Timetable', 
+      110, 54
+    );
 
-    const scopeTitle = selectedDay === 'ALL' ? 'Complete Week Master Timetable' : `Selected Day Timetable: ${selectedDay}`;
+    const scopeTitle = selectedDay === 'ALL' 
+      ? (isMorning ? 'Complete Week Morning Academic Timetable' : 'Complete Week Evening Master Timetable') 
+      : `Selected Day Timetable: ${selectedDay}`;
+
     doc.font('Helvetica-Bold').fontSize(12).fillColor('#0f172a').text(scopeTitle, 0, 34, { align: 'right', width: 780 });
-    doc.font('Helvetica').fontSize(9).fillColor('#475569').text(weekTitle, 0, 52, { align: 'right', width: 780 });
+    doc.font('Helvetica').fontSize(9).fillColor('#475569').text(`${displayWeekTitle} | ${realTimeInfo.monthName}`, 0, 52, { align: 'right', width: 780 });
 
     let y = 100;
-
     const daysToRender = selectedDay === 'ALL' ? ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] : [selectedDay];
-    const houses = ['Gryffindor', 'Slytherin', 'Hufflepuff', 'Ravenclaw'];
 
-    daysToRender.forEach(day => {
-      if (y > 450) {
-        doc.addPage();
-        y = 35;
-      }
+    if (isMorning) {
+      // MORNING ACADEMIC TIMETABLE PDF LAYOUT
+      const timeSlotsToUse = (morningTimeSlots && morningTimeSlots.length > 0)
+        ? morningTimeSlots
+        : [
+            { slotNumber: 1, label: 'Period 1', timeRange: '09:30 AM - 10:15 AM' },
+            { slotNumber: 2, label: 'Period 2', timeRange: '10:15 AM - 11:00 AM' },
+            { slotNumber: 3, label: 'Period 3', timeRange: '11:00 AM - 11:45 AM' },
+            { slotNumber: 4, label: 'Period 4', timeRange: '11:45 AM - 12:30 PM' },
+            { slotNumber: 5, label: 'Lunch Break', timeRange: '12:30 PM - 01:15 PM' },
+            { slotNumber: 6, label: 'Period 5', timeRange: '01:15 PM - 02:00 PM' }
+          ];
 
-      // Day Title Banner
-      doc.rect(40, y, 760, 22).fill('#0f172a');
-      doc.font('Helvetica-Bold').fontSize(10).fillColor('#ffffff').text(`DAY: ${day}`, 50, y + 6);
-      y += 22;
+      daysToRender.forEach(day => {
+        if (y > 450) {
+          doc.addPage();
+          y = 35;
+        }
 
-      // Table House Columns Header Banner (WITH HOUSE NAMES & DISTINCT HOUSE COLORS)
-      doc.rect(40, y, 160, 22).fillAndStroke('#e2e8f0', '#cbd5e1');
-      doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#334155').text('TIME / HOUSE', 48, y + 6);
+        const dInfo = realTimeInfo.dayDates[day];
+        const dayLabel = dInfo 
+          ? `DAY: ${day} (${dInfo.fullDateStr})${dInfo.isToday ? ' [TODAY]' : ''}`
+          : `DAY: ${day}`;
 
-      let xH = 200;
-      houses.forEach(hName => {
-        const hColor = houseColors[hName] || { primary: '#475569' };
-        doc.rect(xH, y, 150, 22).fill(hColor.primary);
-        doc.font('Helvetica-Bold').fontSize(9).fillColor('#ffffff').text(`${hName.toUpperCase()} HOUSE`, xH, y + 6, { align: 'center', width: 150 });
-        xH += 150;
-      });
-      y += 22;
+        // Day Title Banner
+        doc.rect(40, y, 760, 22).fill('#312e81');
+        doc.font('Helvetica-Bold').fontSize(10).fillColor('#ffffff').text(dayLabel, 50, y + 6);
+        y += 22;
 
-      // Slots 1 & 2 Rows
-      [1, 2].forEach(slotNum => {
-        const timeRangeStr = slotNum === 1 ? '5:30 PM - 6:30 PM\n(Slot 1)' : '6:30 PM - 7:30 PM\n(Slot 2)';
-        const cellHeight = 48;
-        
-        doc.rect(40, y, 160, cellHeight).fillAndStroke('#f8fafc', '#cbd5e1');
-        doc.font('Helvetica-Bold').fontSize(8).fillColor('#334155').text(timeRangeStr, 45, y + 14);
+        const maxSlotsPerRow = Math.min(timeSlotsToUse.length, 6);
+        const colWidth = Math.floor(760 / maxSlotsPerRow);
 
-        let xOffset = 200;
-        houses.forEach(house => {
-          const cellWidth = 150;
-          const hTheme = houseColors[house] || { bg: '#ffffff', border: '#cbd5e1', primary: '#475569', badgeText: '#0f172a' };
+        // Header Row for Period Columns
+        doc.rect(40, y, 760, 20).fill('#e0e7ff');
+        let xOffset = 40;
+        timeSlotsToUse.slice(0, maxSlotsPerRow).forEach(ts => {
+          doc.font('Helvetica-Bold').fontSize(8).fillColor('#1e1b4b').text(`${ts.label.toUpperCase()} (${ts.timeRange})`, xOffset + 4, y + 5, { width: colWidth - 8, align: 'center' });
+          xOffset += colWidth;
+        });
+        y += 20;
 
-          // Fill cell background with House Tint Color
-          doc.rect(xOffset, y, cellWidth, cellHeight).fillAndStroke(hTheme.bg, hTheme.border);
-          
-          // Draw colored left accent bar
-          doc.rect(xOffset, y, 4, cellHeight).fill(hTheme.primary);
+        // Content Row for Periods
+        const cellHeight = 44;
+        xOffset = 40;
 
-          const slotItem = slots.find(s => s.day === day && s.slotNumber === slotNum && (s.house === house || s.house === 'All Houses'));
+        timeSlotsToUse.slice(0, maxSlotsPerRow).forEach(ts => {
+          doc.rect(xOffset, y, colWidth, cellHeight).fillAndStroke('#ffffff', '#c7d2fe');
+
+          const slotItem = slots.find(s => s.day === day && s.slotNumber === ts.slotNumber);
           if (slotItem) {
             if (slotItem.isSplit && slotItem.subSlots && slotItem.subSlots.length > 0) {
               const sub1 = slotItem.subSlots[0] || {};
               const sub2 = slotItem.subSlots[1] || {};
-              
-              // Sub 1
-              doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#0f172a').text(`1. ${sub1.subject || 'Activity'}`, xOffset + 8, y + 3, { width: cellWidth - 12 });
-              doc.font('Helvetica').fontSize(7).fillColor(hTheme.primary).text(`${sub1.facultyName || 'TBA'} (${sub1.groupInfo || sub1.grade || 'Grp 1'})`, xOffset + 8, y + 13);
-              
-              // Dashed horizontal divider
-              doc.moveTo(xOffset + 6, y + 24).lineTo(xOffset + cellWidth - 6, y + 24).dash(2, { space: 2 }).stroke('#cbd5e1').undash();
-              
-              // Sub 2
-              doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#0f172a').text(`2. ${sub2.subject || 'Activity'}`, xOffset + 8, y + 27, { width: cellWidth - 12 });
-              doc.font('Helvetica').fontSize(7).fillColor(hTheme.primary).text(`${sub2.facultyName || 'TBA'} (${sub2.groupInfo || sub2.grade || 'Grp 2'})`, xOffset + 8, y + 37);
+              doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#1e1b4b').text(`1. ${sub1.subject || 'Period'} (${sub1.grade || 'Grp 1'})`, xOffset + 4, y + 4, { width: colWidth - 8 });
+              doc.font('Helvetica').fontSize(7).fillColor('#4338ca').text(`T: ${sub1.facultyName || 'TBA'}`, xOffset + 4, y + 14);
+              doc.moveTo(xOffset + 4, y + 22).lineTo(xOffset + colWidth - 4, y + 22).dash(2, { space: 2 }).stroke('#c7d2fe').undash();
+              doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#1e1b4b').text(`2. ${sub2.subject || 'Period'} (${sub2.grade || 'Grp 2'})`, xOffset + 4, y + 24, { width: colWidth - 8 });
+              doc.font('Helvetica').fontSize(7).fillColor('#4338ca').text(`T: ${sub2.facultyName || 'TBA'}`, xOffset + 4, y + 34);
             } else {
-              // Single Slot
-              doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a').text(slotItem.subject || 'Activity', xOffset + 10, y + 5, { width: cellWidth - 14 });
-              doc.font('Helvetica-Bold').fontSize(8).fillColor(hTheme.primary).text(slotItem.facultyName || 'TBA', xOffset + 10, y + 18);
-              doc.font('Helvetica').fontSize(7.5).fillColor('#475569').text(`House: ${house}`, xOffset + 10, y + 29);
-              doc.font('Helvetica').fontSize(7).fillColor('#64748b').text(`(${slotItem.groupInfo || slotItem.grade || 'All Groups'})`, xOffset + 10, y + 37);
+              doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a').text(slotItem.subject || 'Class Period', xOffset + 6, y + 5, { width: colWidth - 12 });
+              doc.font('Helvetica-Bold').fontSize(8).fillColor('#4338ca').text(slotItem.facultyName || 'TBA', xOffset + 6, y + 18);
+              doc.font('Helvetica').fontSize(7.5).fillColor('#475569').text(`Class: ${slotItem.grade || 'General'}`, xOffset + 6, y + 30);
             }
           } else {
-            doc.font('Helvetica-Oblique').fontSize(8).fillColor('#94a3b8').text('Unassigned Slot', xOffset + 10, y + 20);
+            doc.font('Helvetica-Oblique').fontSize(8).fillColor('#94a3b8').text('Unassigned', xOffset + colWidth / 2 - 25, y + 16);
           }
 
-          xOffset += cellWidth;
+          xOffset += colWidth;
         });
 
-        y += cellHeight;
+        y += cellHeight + 12;
       });
+    } else {
+      // EVENING HOUSE ACTIVITY TIMETABLE PDF LAYOUT
+      const houses = ['Gryffindor', 'Slytherin', 'Hufflepuff', 'Ravenclaw'];
 
-      y += 12;
-    });
+      daysToRender.forEach(day => {
+        if (y > 450) {
+          doc.addPage();
+          y = 35;
+        }
+
+        const dInfo = realTimeInfo.dayDates[day];
+        const dayLabel = dInfo 
+          ? `DAY: ${day} (${dInfo.fullDateStr})${dInfo.isToday ? ' [TODAY]' : ''}`
+          : `DAY: ${day}`;
+
+        // Day Title Banner
+        doc.rect(40, y, 760, 22).fill('#0f172a');
+        doc.font('Helvetica-Bold').fontSize(10).fillColor('#ffffff').text(dayLabel, 50, y + 6);
+        y += 22;
+
+        // Table House Columns Header Banner
+        doc.rect(40, y, 160, 22).fillAndStroke('#e2e8f0', '#cbd5e1');
+        doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#334155').text('TIME / HOUSE', 48, y + 6);
+
+        let xH = 200;
+        houses.forEach(hName => {
+          const hColor = houseColors[hName] || { primary: '#475569' };
+          doc.rect(xH, y, 150, 22).fill(hColor.primary);
+          doc.font('Helvetica-Bold').fontSize(9).fillColor('#ffffff').text(`${hName.toUpperCase()} HOUSE`, xH, y + 6, { align: 'center', width: 150 });
+          xH += 150;
+        });
+        y += 22;
+
+        // Slots 1 & 2 Rows
+        [1, 2].forEach(slotNum => {
+          const timeRangeStr = slotNum === 1 ? '5:30 PM - 6:30 PM\n(Slot 1)' : '6:30 PM - 7:30 PM\n(Slot 2)';
+          const cellHeight = 48;
+          
+          doc.rect(40, y, 160, cellHeight).fillAndStroke('#f8fafc', '#cbd5e1');
+          doc.font('Helvetica-Bold').fontSize(8).fillColor('#334155').text(timeRangeStr, 45, y + 14);
+
+          let xOffset = 200;
+          houses.forEach(house => {
+            const cellWidth = 150;
+            const hTheme = houseColors[house] || { bg: '#ffffff', border: '#cbd5e1', primary: '#475569', badgeText: '#0f172a' };
+
+            doc.rect(xOffset, y, cellWidth, cellHeight).fillAndStroke(hTheme.bg, hTheme.border);
+            doc.rect(xOffset, y, 4, cellHeight).fill(hTheme.primary);
+
+            const slotItem = slots.find(s => s.day === day && s.slotNumber === slotNum && (s.house === house || s.house === 'All Houses'));
+            if (slotItem) {
+              if (slotItem.isSplit && slotItem.subSlots && slotItem.subSlots.length > 0) {
+                const sub1 = slotItem.subSlots[0] || {};
+                const sub2 = slotItem.subSlots[1] || {};
+                doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#0f172a').text(`1. ${sub1.subject || 'Activity'}`, xOffset + 8, y + 3, { width: cellWidth - 12 });
+                doc.font('Helvetica').fontSize(7).fillColor(hTheme.primary).text(`${sub1.facultyName || 'TBA'} (${sub1.groupInfo || sub1.grade || 'Grp 1'})`, xOffset + 8, y + 13);
+                doc.moveTo(xOffset + 6, y + 24).lineTo(xOffset + cellWidth - 6, y + 24).dash(2, { space: 2 }).stroke('#cbd5e1').undash();
+                doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#0f172a').text(`2. ${sub2.subject || 'Activity'}`, xOffset + 8, y + 27, { width: cellWidth - 12 });
+                doc.font('Helvetica').fontSize(7).fillColor(hTheme.primary).text(`${sub2.facultyName || 'TBA'} (${sub2.groupInfo || sub2.grade || 'Grp 2'})`, xOffset + 8, y + 37);
+              } else {
+                doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a').text(slotItem.subject || 'Activity', xOffset + 10, y + 5, { width: cellWidth - 14 });
+                doc.font('Helvetica-Bold').fontSize(8).fillColor(hTheme.primary).text(slotItem.facultyName || 'TBA', xOffset + 10, y + 18);
+                doc.font('Helvetica').fontSize(7.5).fillColor('#475569').text(`House: ${house}`, xOffset + 10, y + 29);
+                doc.font('Helvetica').fontSize(7).fillColor('#64748b').text(`(${slotItem.groupInfo || slotItem.grade || 'All Groups'})`, xOffset + 10, y + 37);
+              }
+            } else {
+              doc.font('Helvetica-Oblique').fontSize(8).fillColor('#94a3b8').text('Unassigned Slot', xOffset + 10, y + 20);
+            }
+
+            xOffset += cellWidth;
+          });
+
+          y += cellHeight;
+        });
+
+        y += 12;
+      });
+    }
 
     const range = doc.bufferedPageRange();
     for (let i = range.start; i < range.start + range.count; i++) {
       doc.switchToPage(i);
       doc.fontSize(8).fillColor('#94a3b8').text(
-        `Midas Eduventures © 2026 | Master Activity Timetable PDF | Page ${i + 1} of ${range.count}`,
+        `Midas Eduventures © 2026 | ${isMorning ? 'Morning Main School Academic' : 'Master Activity'} Timetable PDF | Page ${i + 1} of ${range.count}`,
         40,
         doc.page.height - 25,
         { align: 'center', width: doc.page.width - 80 }

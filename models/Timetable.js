@@ -16,9 +16,9 @@ const slotSchema = new mongoose.Schema({
   timeRange: { type: String, required: true }, // "5:30 PM - 6:30 PM" or "6:30 PM - 7:30 PM"
   house: { 
     type: String, 
-    enum: ['Gryffindor', 'Slytherin', 'Hufflepuff', 'Ravenclaw', 'All Houses'], 
-    required: true 
+    default: 'All Houses'
   },
+  slotType: { type: String, default: 'period' },
   isSplit: { type: Boolean, default: false }, // If true, slot is broken into 2 sub-slots / groups
   subSlots: [subSlotSchema],
   grade: { type: String, default: '' }, // "9-10", "11 Boys", etc.
@@ -29,13 +29,24 @@ const slotSchema = new mongoose.Schema({
   isHoliday: { type: Boolean, default: false }
 });
 
+const morningTimeSlotSchema = new mongoose.Schema({
+  slotNumber: Number,
+  label: String,
+  timeRange: String,
+  type: { type: String, default: 'period' }
+});
+
+const { getRealTimeWeekInfo } = require('../utils/dateHelper');
+
 const timetableSchema = new mongoose.Schema({
-  weekTitle: { type: String, required: true, default: 'WEEK: 24 Aug - 29 Aug 2026' },
+  weekTitle: { type: String, required: true, default: () => getRealTimeWeekInfo().weekTitle },
   weekNumber: { type: Number, default: 1 },
   academicYear: { type: String, default: '2026-2027' },
-  startDate: { type: String, default: '2026-08-24' },
-  endDate: { type: String, default: '2026-08-29' },
+  startDate: { type: String, default: () => getRealTimeWeekInfo().startDate },
+  endDate: { type: String, default: () => getRealTimeWeekInfo().endDate },
   slots: [slotSchema],
+  morningTimeSlots: [morningTimeSlotSchema],
+  batch: { type: String, enum: ['morning', 'evening'], default: 'evening' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   updatedAt: { type: Date, default: Date.now }
 });

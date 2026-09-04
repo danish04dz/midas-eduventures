@@ -3,11 +3,31 @@ const router = express.Router();
 const Timetable = require('../models/Timetable');
 const { generateTimetablePDF } = require('../utils/pdfGenerator');
 const { sendWeeklyReportEmail } = require('../utils/emailService');
+const { getRealTimeWeekInfo } = require('../utils/dateHelper');
 
 // GET current Master Weekly Timetable
 router.get('/', async (req, res) => {
   try {
-    let timetable = await Timetable.findOne().sort({ updatedAt: -1 });
+    const { batch = 'evening' } = req.query;
+    let timetable = await Timetable.findOne({ batch }).sort({ updatedAt: -1 });
+    const realTimeInfo = getRealTimeWeekInfo();
+
+    if (!timetable) {
+      timetable = new Timetable({
+        batch,
+        weekTitle: realTimeInfo.weekTitle,
+        startDate: realTimeInfo.startDate,
+        endDate: realTimeInfo.endDate,
+        slots: []
+      });
+      await timetable.save();
+    } else if (!timetable.weekTitle || timetable.weekTitle.includes('24 Aug - 29 Aug 2026')) {
+      timetable.weekTitle = realTimeInfo.weekTitle;
+      timetable.startDate = realTimeInfo.startDate;
+      timetable.endDate = realTimeInfo.endDate;
+      await timetable.save();
+    }
+
     res.json(timetable);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -17,19 +37,26 @@ router.get('/', async (req, res) => {
 // GET Download Timetable PDF (Single Day OR Complete Week)
 router.get('/download-pdf', async (req, res) => {
   try {
-    const { day = 'ALL' } = req.query; // 'ALL', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'
-    const timetable = await Timetable.findOne().sort({ updatedAt: -1 });
-    if (!timetable) return res.status(404).json({ message: 'Timetable grid not found' });
+    const { day = 'ALL', batch = 'evening' } = req.query; // 'ALL', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'
+    let timetable = await Timetable.findOne({ batch }).sort({ updatedAt: -1 });
+    const realTimeInfo = getRealTimeWeekInfo();
+
+    const displayWeekTitle = (timetable && timetable.weekTitle && !timetable.weekTitle.includes('24 Aug - 29 Aug 2026'))
+      ? timetable.weekTitle 
+      : realTimeInfo.weekTitle;
 
     const pdfBuffer = await generateTimetablePDF({
-      weekTitle: timetable.weekTitle || 'WEEK: 24 Aug - 29 Aug 2026',
+      weekTitle: displayWeekTitle,
       selectedDay: day,
-      slots: timetable.slots || []
+      slots: timetable?.slots || [],
+      morningTimeSlots: timetable?.morningTimeSlots || [],
+      batch
     });
 
+    const isMorning = batch === 'morning';
     const dayNameStr = day === 'ALL' ? 'Complete_Week' : `Day_${day}`;
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=Midas_Timetable_${dayNameStr}_${Date.now()}.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename=Midas_${isMorning ? 'Morning' : 'Evening'}_Timetable_${dayNameStr}_${Date.now()}.pdf`);
     res.send(pdfBuffer);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -39,21 +66,29 @@ router.get('/download-pdf', async (req, res) => {
 // POST Send Timetable PDF via Email
 router.post('/send-email', async (req, res) => {
   try {
-    const { day = 'ALL', recipientEmail } = req.body;
-    const timetable = await Timetable.findOne().sort({ updatedAt: -1 });
-    if (!timetable) return res.status(404).json({ message: 'Timetable grid not found' });
+    const { day = 'ALL', recipientEmail, batch = 'evening' } = req.body;
+    let timetable = await Timetable.findOne({ batch }).sort({ updatedAt: -1 });
+    const realTimeInfo = getRealTimeWeekInfo();
+
+    const displayWeekTitle = (timetable && timetable.weekTitle && !timetable.weekTitle.includes('24 Aug - 29 Aug 2026'))
+      ? timetable.weekTitle 
+      : realTimeInfo.weekTitle;
 
     const pdfBuffer = await generateTimetablePDF({
-      weekTitle: timetable.weekTitle || 'WEEK: 24 Aug - 29 Aug 2026',
+      weekTitle: displayWeekTitle,
       selectedDay: day,
-      slots: timetable.slots || []
+      slots: timetable?.slots || [],
+      morningTimeSlots: timetable?.morningTimeSlots || [],
+      batch
     });
 
-    const scopeStr = day === 'ALL' ? 'Complete Week Master Activity Timetable' : `Selected Day Timetable (${day})`;
-    const emailSubject = `[Midas Eduventures] ${scopeStr} - ${timetable.weekTitle || 'August 2026'}`;
-    const emailBody = `Dear Principal & Coordinator,\n\nPlease find attached the official Evening House Activity Timetable PDF (${scopeStr}).\n\n` +
-      `📅 Period: ${timetable.weekTitle}\n` +
-      `📌 Scope: ${scopeStr}\n\n` +
+    const isMorning = batch === 'morning';
+    const scopeTitle = isMorning ? 'Morning Main School Academic Timetable' : 'Evening House Activity Timetable';
+    const scopeStr = day === 'ALL' ? `Complete Week ${scopeTitle}` : `Selected Day Timetable (${day})`;
+    const emailSubject = `[Midas Eduventures] ${scopeStr} - ${displayWeekTitle}`;
+    const emailBody = `Dear Principal & Coordinator,\n\nPlease find attached the official ${scopeTitle} PDF (${scopeStr}).\n\n` +
+      `📅 Period: ${displayWeekTitle}\n` +
+      `📌 Branch: ${isMorning ? 'MORNING MAIN SCHOOL BATCH' : 'EVENING EXTRA-CURRICULAR ACTIVITY'}\n\n` +
       `Best regards,\nMidas Eduventures Academic System`;
 
     const result = await sendWeeklyReportEmail({
@@ -61,11 +96,11 @@ router.post('/send-email', async (req, res) => {
       subject: emailSubject,
       text: emailBody,
       pdfBuffer,
-      filename: `Midas_Timetable_${day}_${Date.now()}.pdf`
+      filename: `Midas_${isMorning ? 'Morning' : 'Evening'}_Timetable_${day}_${Date.now()}.pdf`
     });
 
     res.json({
-      message: `Timetable PDF successfully sent via email (${result.recipient})!`,
+      message: `${scopeTitle} PDF successfully sent via email (${result.recipient})!`,
       subject: emailSubject,
       previewUrl: result.previewUrl
     });
@@ -111,29 +146,34 @@ router.get('/faculty/:facultyName', async (req, res) => {
   }
 });
 
-// POST / PUT update Timetable (Admin / Main Coordinator)
+// POST / PUT update Timetable (Admin / Main Coordinator / Morning Admin)
 router.post('/', async (req, res) => {
   try {
-    const { weekTitle, weekNumber, academicYear, startDate, endDate, slots } = req.body;
+    const { weekTitle, weekNumber, academicYear, startDate, endDate, slots, morningTimeSlots, batch = 'evening' } = req.body;
     
-    let timetable = await Timetable.findOne();
+    let timetable = await Timetable.findOne({ batch });
     if (timetable) {
-      timetable.weekTitle = weekTitle || timetable.weekTitle;
+      timetable.weekTitle = weekTitle || getRealTimeWeekInfo().weekTitle;
       timetable.weekNumber = weekNumber || timetable.weekNumber;
       timetable.academicYear = academicYear || timetable.academicYear;
-      timetable.startDate = startDate || timetable.startDate;
-      timetable.endDate = endDate || timetable.endDate;
+      timetable.startDate = startDate || getRealTimeWeekInfo().startDate;
+      timetable.endDate = endDate || getRealTimeWeekInfo().endDate;
       timetable.slots = slots || timetable.slots;
+      if (morningTimeSlots) timetable.morningTimeSlots = morningTimeSlots;
+      timetable.batch = batch;
       timetable.updatedAt = Date.now();
       await timetable.save();
     } else {
+      const realTimeInfo = getRealTimeWeekInfo();
       timetable = new Timetable({
-        weekTitle: weekTitle || 'WEEK: 24 Aug - 29 Aug 2026',
-        weekNumber: weekNumber || 1,
-        academicYear: academicYear || '2026-2027',
-        startDate: startDate || '2026-08-24',
-        endDate: endDate || '2026-08-29',
-        slots: slots || []
+        batch,
+        weekTitle: weekTitle || realTimeInfo.weekTitle,
+        weekNumber: weekNumber || realTimeInfo.weekNumber,
+        academicYear: academicYear || realTimeInfo.academicYear,
+        startDate: startDate || realTimeInfo.startDate,
+        endDate: endDate || realTimeInfo.endDate,
+        slots: slots || [],
+        morningTimeSlots: morningTimeSlots || []
       });
       await timetable.save();
     }
@@ -182,4 +222,55 @@ router.post('/reset', async (req, res) => {
   }
 });
 
+// POST Copy or Move Day Timetable slots to target day(s)
+router.post('/copy-day', async (req, res) => {
+  try {
+    const { sourceDay, targetDays, isMove = false } = req.body;
+    if (!sourceDay || !targetDays || !Array.isArray(targetDays) || targetDays.length === 0) {
+      return res.status(400).json({ message: 'Source day and target days array are required' });
+    }
+
+    let timetable = await Timetable.findOne();
+    if (!timetable) return res.status(404).json({ message: 'Timetable grid not found' });
+
+    const sourceSlots = timetable.slots.filter(s => s.day === sourceDay);
+    if (sourceSlots.length === 0) {
+      return res.status(400).json({ message: `No timetable slots configured for ${sourceDay} to copy` });
+    }
+
+    // For each target day, remove old slots for target day and copy source slots
+    targetDays.forEach(targetDay => {
+      if (targetDay === sourceDay && !isMove) return;
+
+      // Remove existing slots for target day
+      timetable.slots = timetable.slots.filter(s => s.day !== targetDay);
+
+      // Clone source slots for target day
+      sourceSlots.forEach(src => {
+        const cloned = src.toObject();
+        delete cloned._id;
+        cloned.day = targetDay;
+        timetable.slots.push(cloned);
+      });
+    });
+
+    // If move option selected, remove source slots after copying
+    if (isMove) {
+      timetable.slots = timetable.slots.filter(s => s.day !== sourceDay);
+    }
+
+    timetable.updatedAt = Date.now();
+    await timetable.save();
+
+    const actionStr = isMove ? 'moved' : 'copied';
+    res.json({
+      message: `Timetable for ${sourceDay} successfully ${actionStr} to ${targetDays.join(', ')}!`,
+      timetable
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;
+

@@ -2,11 +2,25 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Timetable = require('../models/Timetable');
 const DailyReport = require('../models/DailyReport');
+const { getRealTimeWeekInfo } = require('./dateHelper');
 
 async function seedData(force = false) {
   try {
     const userCount = await User.countDocuments();
     if (userCount > 0 && !force) {
+      // Ensure morningadmin account exists
+      const existingMorningAdmin = await User.findOne({ email: 'morningadmin@midas.edu' });
+      if (!existingMorningAdmin) {
+        const defaultPassword = await bcrypt.hash('password123', 10);
+        await User.create({
+          name: 'Prof. R. K. Patel',
+          email: 'morningadmin@midas.edu',
+          password: defaultPassword,
+          role: 'morning_admin',
+          designation: 'Morning Batch Academic Admin'
+        });
+        console.log('[Seeder] Created Morning Admin: morningadmin@midas.edu (Password: password123)');
+      }
       console.log('[Seeder] Production accounts already exist:', userCount, 'users.');
       return;
     }
@@ -44,13 +58,15 @@ async function seedData(force = false) {
     console.log('  2. Admin / Main Coordinator: admin@midas.edu (Password: password123)');
     console.log('  Note: Faculty accounts will be added directly by Admin via the Admin Dashboard.');
 
+    const realTimeInfo = getRealTimeWeekInfo();
+
     // Initialize Empty Master Activity Timetable
     await Timetable.create({
-      weekTitle: 'WEEK: 24 Aug - 29 Aug 2026',
+      weekTitle: realTimeInfo.weekTitle,
       weekNumber: 1,
       academicYear: '2026-2027',
-      startDate: '2026-08-24',
-      endDate: '2026-08-29',
+      startDate: realTimeInfo.startDate,
+      endDate: realTimeInfo.endDate,
       createdBy: admin._id,
       slots: []
     });

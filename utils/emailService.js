@@ -44,34 +44,38 @@ async function getTransporter() {
   return cachedTransporter;
 }
 
+const { getRealTimeWeekInfo } = require('./dateHelper');
+
 /**
- * Generates high-deliverability HTML email body for Midas Eduventures.
+ * Generates clean, professional HTML body for email dispatch.
  */
 function buildProfessionalHtmlEmail({ title, period, scope, logCount, detailsText }) {
+  const realTimeInfo = getRealTimeWeekInfo();
+  const currentPeriodStr = period || `${realTimeInfo.monthName} (${realTimeInfo.weekTitle})`;
   return `
   <!DOCTYPE html>
   <html>
   <head>
     <meta charset="utf-8">
     <style>
-      body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #0f172a; }
-      .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-      .header { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px 24px; color: #ffffff; text-align: left; border-bottom: 4px solid #f59e0b; }
-      .header-title { font-size: 20px; font-weight: 800; margin: 0; letter-spacing: 0.5px; color: #ffffff; }
-      .header-sub { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; padding: 20px; }
+      .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+      .header { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff; padding: 24px; text-align: center; }
+      .header h1 { font-size: 20px; font-weight: 900; margin: 0; letter-spacing: 0.5px; }
+      .header p { font-size: 12px; color: #f59e0b; font-weight: 700; margin: 4px 0 0 0; text-transform: uppercase; }
       .content { padding: 28px 24px; }
-      .meta-box { background-color: #f1f5f9; border-radius: 12px; padding: 18px; margin: 20px 0; border-left: 4px solid #2563eb; }
-      .meta-row { font-size: 13px; margin-bottom: 8px; color: #334155; }
-      .meta-row strong { color: #0f172a; font-weight: 700; }
-      .badge { display: inline-block; background-color: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; padding: 3px 10px; rounded: 12px; border: 1px solid #86efac; border-radius: 99px; }
-      .footer { background-color: #f8fafc; padding: 20px 24px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0; }
+      .meta-box { background: #f8fafc; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px; margin: 20px 0; font-size: 13px; }
+      .meta-row { margin-bottom: 8px; }
+      .meta-row:last-child { margin-bottom: 0; }
+      .badge { display: inline-block; background: #dcfce7; color: #166534; font-weight: 800; font-size: 11px; padding: 2px 8px; rounded: 6px; }
+      .footer { background: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0; }
     </style>
   </head>
   <body>
     <div class="container">
       <div class="header">
-        <div class="header-title">MIDAS CONCEPT SCHOOL, SAUSAR</div>
-        <div class="header-sub">Official Academic Reporting & Master Schedule Portal</div>
+        <h1>MIDAS CONCEPT SCHOOL</h1>
+        <p>Official Academic Curriculum & Activity Report</p>
       </div>
       <div class="content">
         <h2 style="font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 0;">${title || 'Academic Weekly Report Notification'}</h2>
@@ -82,7 +86,7 @@ function buildProfessionalHtmlEmail({ title, period, scope, logCount, detailsTex
 
         <div class="meta-box">
           <div class="meta-row"><strong>📌 Document Scope:</strong> ${scope || 'Weekly Curriculum Tracking Report'}</div>
-          <div class="meta-row"><strong>📅 Academic Period:</strong> ${period || 'August 2026'}</div>
+          <div class="meta-row"><strong>📅 Academic Period:</strong> ${currentPeriodStr}</div>
           ${logCount ? `<div class="meta-row"><strong>📊 Total Log Entries:</strong> ${logCount} Sessions</div>` : ''}
           <div class="meta-row"><strong>STATUS:</strong> <span class="badge">VERIFIED & ATTACHED</span></div>
         </div>
@@ -109,11 +113,13 @@ async function sendWeeklyReportEmail({ recipientEmail, subject, text, pdfBuffer,
   const senderEmail = process.env.EMAIL_USER || process.env.SMTP_USER || 'printyatri@gmail.com';
   const targetRecipient = recipientEmail || process.env.PRINCIPAL_EMAIL || 'mohd.692003@gmail.com';
 
-  const professionalSubject = subject || `Official Academic Weekly Curriculum Report - Midas Concept School, Sausar (${periodStr || 'August 2026'})`;
+  const realTimeInfo = getRealTimeWeekInfo();
+  const currentPeriodStr = periodStr || `${realTimeInfo.monthName} (${realTimeInfo.weekTitle})`;
+  const professionalSubject = subject || `Official Academic Weekly Curriculum Report - Midas Concept School, Sausar (${currentPeriodStr})`;
 
   const htmlBody = buildProfessionalHtmlEmail({
     title: professionalSubject,
-    period: periodStr || 'August 2026 (Week 1)',
+    period: currentPeriodStr,
     scope: scopeTitle || 'Evening House Activity & Extra-Curricular Weekly Report',
     logCount: logCount || null,
     detailsText: text

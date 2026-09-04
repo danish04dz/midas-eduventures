@@ -6,11 +6,12 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { 
     type: String, 
-    enum: ['principal', 'admin', 'faculty'], 
+    enum: ['principal', 'admin', 'morning_admin', 'faculty'], 
     default: 'faculty' 
   },
   subject: { type: String, default: '' },
   designation: { type: String, default: 'Faculty Member' },
+  batch: { type: String, enum: ['morning', 'evening'], default: 'evening' },
   avatar: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now }
 });
