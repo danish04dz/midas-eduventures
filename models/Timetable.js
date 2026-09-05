@@ -6,7 +6,9 @@ const subSlotSchema = new mongoose.Schema({
   facultyId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   facultyName: { type: String, default: '' },
   grade: { type: String, default: '' },
-  groupInfo: { type: String, default: '' }
+  groupInfo: { type: String, default: '' },
+  isSuspended: { type: Boolean, default: false },
+  suspendReason: { type: String, default: '' }
 });
 
 const slotSchema = new mongoose.Schema({
@@ -26,7 +28,9 @@ const slotSchema = new mongoose.Schema({
   facultyId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   facultyName: { type: String, default: '' },
   groupInfo: { type: String, default: '' }, // e.g. "11 Boys", "9-10 (Gryff)"
-  isHoliday: { type: Boolean, default: false }
+  isHoliday: { type: Boolean, default: false },
+  isSuspended: { type: Boolean, default: false },
+  suspendReason: { type: String, default: '' }
 });
 
 const morningTimeSlotSchema = new mongoose.Schema({

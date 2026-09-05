@@ -256,7 +256,15 @@ function generateTimetablePDF(ttData) {
 
             const slotItem = slots.find(s => s.day === day && s.slotNumber === slotNum && (s.house === house || s.house === 'All Houses'));
             if (slotItem) {
-              if (slotItem.isSplit && slotItem.subSlots && slotItem.subSlots.length > 0) {
+              if (slotItem.isSuspended) {
+                doc.rect(xOffset, y, cellWidth, cellHeight).fillAndStroke('#fef2f2', '#fca5a5');
+                doc.rect(xOffset, y, 4, cellHeight).fill('#dc2626');
+                doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#991b1b').text('CLASS SUSPENDED', xOffset + 10, y + 6, { width: cellWidth - 14 });
+                doc.font('Helvetica-Oblique').fontSize(7.5).fillColor('#b91c1c').text(`Reason: ${slotItem.suspendReason || 'Suspended'}`, xOffset + 10, y + 19, { width: cellWidth - 14 });
+                if (slotItem.facultyName) {
+                  doc.font('Helvetica').fontSize(7).fillColor('#7f1d1d').text(`Faculty: ${slotItem.facultyName}`, xOffset + 10, y + 33, { width: cellWidth - 14 });
+                }
+              } else if (slotItem.isSplit && slotItem.subSlots && slotItem.subSlots.length > 0) {
                 const sub1 = slotItem.subSlots[0] || {};
                 const sub2 = slotItem.subSlots[1] || {};
                 doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#0f172a').text(`1. ${sub1.subject || 'Activity'}`, xOffset + 8, y + 3, { width: cellWidth - 12 });

@@ -169,7 +169,7 @@ router.get('/faculty/:facultyName', async (req, res) => {
               subSlotDetails: matchingSub
             });
           }
-        } else if (s.facultyName && s.facultyName.toLowerCase().includes(lowerSearch)) {
+        } else if (s.isSuspended || (s.facultyName && s.facultyName.toLowerCase().includes(lowerSearch))) {
           assignedSlots.push({
             ...s.toObject(),
             batch: timetable.batch,
@@ -221,7 +221,15 @@ router.post('/', async (req, res) => {
     if (slots && slots.length > 0) {
       const Notification = require('../models/Notification');
       for (const slot of slots) {
-        if (slot.facultyName && slot.subject) {
+        if (slot.isSuspended) {
+          await Notification.create({
+            title: `🚫 Class Suspended: ${slot.day} (${slot.timeRange})`,
+            body: `Class at ${slot.house} is suspended. Reason: ${slot.suspendReason || 'Suspended by Admin'}.`,
+            targetFacultyName: slot.facultyName || 'ALL',
+            type: 'timetable',
+            senderName: 'Main Coordinator (Admin)'
+          }).catch(e => console.error('[Notif Creation Error]', e.message));
+        } else if (slot.facultyName && slot.subject) {
           await Notification.create({
             title: `📅 Timetable Slot Assigned: ${slot.subject}`,
             body: `You are assigned to ${slot.house} (${slot.groupInfo || slot.grade}) on ${slot.day} (${slot.timeRange}).`,
