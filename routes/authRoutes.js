@@ -120,7 +120,11 @@ router.get('/faculties', async (req, res) => {
   try {
     const { batch } = req.query;
     const filter = { role: 'faculty' };
-    if (batch) filter.batch = batch;
+    if (batch === 'morning') {
+      filter.batch = 'morning';
+    } else if (batch === 'evening') {
+      filter.batch = { $ne: 'morning' };
+    }
     const faculties = await User.find(filter).select('-password').sort({ createdAt: -1 });
     res.json(faculties);
   } catch (err) {
@@ -173,7 +177,7 @@ router.put('/admin/reset-password', async (req, res) => {
 // Admin edit faculty member details
 router.put('/faculty/:id', async (req, res) => {
   try {
-    const { name, email, subject, designation, role } = req.body;
+    const { name, email, subject, designation, role, batch } = req.body;
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Faculty member not found' });
 
@@ -186,6 +190,7 @@ router.put('/faculty/:id', async (req, res) => {
     if (subject !== undefined) user.subject = subject;
     if (designation !== undefined) user.designation = designation;
     if (role) user.role = role;
+    if (batch) user.batch = batch;
 
     await user.save();
     res.json({
@@ -196,7 +201,8 @@ router.put('/faculty/:id', async (req, res) => {
         email: user.email,
         role: user.role,
         subject: user.subject,
-        designation: user.designation
+        designation: user.designation,
+        batch: user.batch
       }
     });
   } catch (err) {
@@ -207,7 +213,14 @@ router.put('/faculty/:id', async (req, res) => {
 // Get all admin users (Evening Admin & Morning Admin)
 router.get('/admins', async (req, res) => {
   try {
-    const admins = await User.find({ role: { $in: ['admin', 'morning_admin'] } }).select('-password').sort({ createdAt: -1 });
+    const { batch } = req.query;
+    const filter = { role: { $in: ['admin', 'morning_admin'] } };
+    if (batch === 'morning') {
+      filter.role = 'morning_admin';
+    } else if (batch === 'evening') {
+      filter.role = 'admin';
+    }
+    const admins = await User.find(filter).select('-password').sort({ createdAt: -1 });
     res.json(admins);
   } catch (err) {
     res.status(500).json({ message: err.message });

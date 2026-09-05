@@ -30,6 +30,9 @@ const dailyReportSchema = new mongoose.Schema({
   remarkBy: { type: String, default: '' },
   remarkedAt: { type: Date },
 
+  // Faculty Remarks / Issues Faced (Optional)
+  facultyRemarks: { type: String, default: '' },
+
   images: [{ type: String }],
   batch: { type: String, enum: ['morning', 'evening'], default: 'evening' },
   status: { type: String, enum: ['submitted', 'reviewed'], default: 'submitted' },

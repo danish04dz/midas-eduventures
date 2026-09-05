@@ -234,13 +234,17 @@ function generateTimetablePDF(ttData) {
         });
         y += 22;
 
-        // Slots 1 & 2 Rows
-        [1, 2].forEach(slotNum => {
-          const timeRangeStr = slotNum === 1 ? '5:30 PM - 6:30 PM\n(Slot 1)' : '6:30 PM - 7:30 PM\n(Slot 2)';
+        // Dynamic Slot Rows for Evening Batch
+        const availableSlots = Array.from(new Set(slots.filter(s => s.day === day).map(s => s.slotNumber)));
+        const slotNumbersToRender = availableSlots.length > 0 ? availableSlots.sort((a,b)=>a-b) : [1, 2];
+
+        slotNumbersToRender.forEach(slotNum => {
+          const matchingAnySlot = slots.find(s => s.day === day && s.slotNumber === slotNum);
+          const timeRangeStr = matchingAnySlot?.timeRange || (slotNum === 1 ? '5:30 PM - 6:30 PM' : '6:30 PM - 7:30 PM');
           const cellHeight = 48;
           
           doc.rect(40, y, 160, cellHeight).fillAndStroke('#f8fafc', '#cbd5e1');
-          doc.font('Helvetica-Bold').fontSize(8).fillColor('#334155').text(timeRangeStr, 45, y + 14);
+          doc.font('Helvetica-Bold').fontSize(8).fillColor('#334155').text(`${timeRangeStr}\n(Slot ${slotNum})`, 45, y + 14);
 
           let xOffset = 200;
           houses.forEach(house => {

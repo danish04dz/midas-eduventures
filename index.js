@@ -11,6 +11,8 @@ const authRoutes = require('./routes/authRoutes');
 const timetableRoutes = require('./routes/timetableRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const eveningRoutes = require('./routes/eveningRoutes');
+const morningRoutes = require('./routes/morningRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -48,6 +50,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/timetable', timetableRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/evening', eveningRoutes);
+app.use('/api/morning', morningRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ 

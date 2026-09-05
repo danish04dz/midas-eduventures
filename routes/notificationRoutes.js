@@ -5,8 +5,11 @@ const Notification = require('../models/Notification');
 // GET Notifications for logged in user or all
 router.get('/', async (req, res) => {
   try {
-    const { facultyName } = req.query;
+    const { facultyName, batch } = req.query;
     const filter = {};
+    if (batch) {
+      filter.batch = { $in: [batch, 'all'] };
+    }
     if (facultyName) {
       filter.$or = [
         { targetFacultyName: 'ALL' },
@@ -23,7 +26,7 @@ router.get('/', async (req, res) => {
 // POST Admin Send Custom Push Notification
 router.post('/custom', async (req, res) => {
   try {
-    const { title, body, targetFacultyName, senderName } = req.body;
+    const { title, body, targetFacultyName, senderName, batch = 'evening' } = req.body;
     if (!title || !body) return res.status(400).json({ message: 'Title and body are required' });
 
     const notif = new Notification({
@@ -31,11 +34,12 @@ router.post('/custom', async (req, res) => {
       body,
       targetFacultyName: targetFacultyName || 'ALL',
       type: 'custom',
-      senderName: senderName || 'Main Coordinator (Admin)'
+      batch,
+      senderName: senderName || 'Evening Main Coordinator (Admin)'
     });
 
     await notif.save();
-    res.status(201).json({ message: 'Custom Notification dispatched successfully!', notification: notif });
+    res.status(201).json({ message: 'Custom Evening Notification dispatched successfully!', notification: notif });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

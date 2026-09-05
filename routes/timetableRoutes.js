@@ -8,7 +8,7 @@ const { getRealTimeWeekInfo } = require('../utils/dateHelper');
 // GET current Master Weekly Timetable
 router.get('/', async (req, res) => {
   try {
-    const { batch = 'evening' } = req.query;
+    const { batch = 'evening', facultyName } = req.query;
     let timetable = await Timetable.findOne({ batch }).sort({ updatedAt: -1 });
     const realTimeInfo = getRealTimeWeekInfo();
 
@@ -28,7 +28,34 @@ router.get('/', async (req, res) => {
       await timetable.save();
     }
 
-    res.json(timetable);
+    let resultSlots = timetable.slots || [];
+    if (facultyName) {
+      const lower = facultyName.toLowerCase().trim();
+      resultSlots = resultSlots.filter(s => {
+        if (s.isSplit && s.subSlots && s.subSlots.length > 0) {
+          return s.subSlots.some(sub => sub.facultyName && sub.facultyName.toLowerCase().includes(lower));
+        }
+        return s.facultyName && s.facultyName.toLowerCase().includes(lower);
+      }).map(s => {
+        if (s.isSplit && s.subSlots && s.subSlots.length > 0) {
+          const subMatch = s.subSlots.find(sub => sub.facultyName && sub.facultyName.toLowerCase().includes(lower));
+          if (subMatch) {
+            return {
+              ...s.toObject(),
+              facultyName: subMatch.facultyName,
+              subject: subMatch.subject || s.subject,
+              groupInfo: subMatch.groupInfo || s.groupInfo
+            };
+          }
+        }
+        return s;
+      });
+    }
+
+    res.json({
+      ...timetable.toObject(),
+      slots: resultSlots
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -109,35 +136,47 @@ router.post('/send-email', async (req, res) => {
   }
 });
 
-// GET Timetable assigned to a specific faculty
+// GET Timetable assigned to a specific faculty (Searches Morning & Evening Batches)
 router.get('/faculty/:facultyName', async (req, res) => {
   try {
     const { facultyName } = req.params;
-    const timetable = await Timetable.findOne().sort({ updatedAt: -1 });
-    if (!timetable) return res.json([]);
+    const { batch } = req.query;
+    const filter = batch ? { batch } : {};
+    const timetables = await Timetable.find(filter).sort({ updatedAt: -1 });
+    if (!timetables || timetables.length === 0) return res.json([]);
 
     const assignedSlots = [];
     const lowerSearch = facultyName.toLowerCase();
 
-    timetable.slots.forEach(s => {
-      if (s.isSplit && s.subSlots && s.subSlots.length > 0) {
-        const matchingSub = s.subSlots.find(sub => 
-          sub.facultyName && sub.facultyName.toLowerCase().includes(lowerSearch)
-        );
-        if (matchingSub) {
+    timetables.forEach(timetable => {
+      const batchLabel = timetable.batch === 'morning' ? 'Morning Academic' : 'Evening Activity';
+      (timetable.slots || []).forEach(s => {
+        if (s.isSplit && s.subSlots && s.subSlots.length > 0) {
+          const matchingSub = s.subSlots.find(sub => 
+            sub.facultyName && sub.facultyName.toLowerCase().includes(lowerSearch)
+          );
+          if (matchingSub) {
+            assignedSlots.push({
+              ...s.toObject(),
+              batch: timetable.batch,
+              batchLabel,
+              subject: matchingSub.subject || s.subject,
+              facultyName: matchingSub.facultyName,
+              groupInfo: matchingSub.groupInfo || matchingSub.grade || s.groupInfo,
+              timeRange: (matchingSub.timeRange && matchingSub.timeRange !== s.timeRange) 
+                ? matchingSub.timeRange 
+                : (matchingSub.timeRange || s.timeRange),
+              subSlotDetails: matchingSub
+            });
+          }
+        } else if (s.facultyName && s.facultyName.toLowerCase().includes(lowerSearch)) {
           assignedSlots.push({
             ...s.toObject(),
-            // Expose active subSlot details for faculty view
-            subject: matchingSub.subject || s.subject,
-            facultyName: matchingSub.facultyName,
-            groupInfo: matchingSub.groupInfo || matchingSub.grade || s.groupInfo,
-            timeRange: matchingSub.timeRange ? `${s.timeRange} (${matchingSub.timeRange})` : s.timeRange,
-            subSlotDetails: matchingSub
+            batch: timetable.batch,
+            batchLabel
           });
         }
-      } else if (s.facultyName && s.facultyName.toLowerCase().includes(lowerSearch)) {
-        assignedSlots.push(s);
-      }
+      });
     });
 
     res.json(assignedSlots);

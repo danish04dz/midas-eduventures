@@ -79,7 +79,11 @@ router.get('/', async (req, res) => {
     const filter = {};
     const realTimeInfo = getRealTimeWeekInfo();
 
-    if (batch) filter.batch = batch;
+    if (batch === 'morning') {
+      filter.batch = 'morning';
+    } else if (batch === 'evening') {
+      filter.batch = { $ne: 'morning' };
+    }
     if (facultyId) filter.facultyId = facultyId;
     if (facultyName && facultyName !== 'ALL') filter.facultyName = new RegExp(facultyName, 'i');
     if (subject && subject !== 'ALL') filter.subject = new RegExp(subject, 'i');
@@ -121,7 +125,10 @@ router.post('/', async (req, res) => {
       isHoliday,
       sessions,
       images,
-      batch
+      batch,
+      facultyRemarks,
+      remarks,
+      issueFaced
     } = req.body;
 
     const reportDate = date ? new Date(date) : new Date();
@@ -140,7 +147,8 @@ router.post('/', async (req, res) => {
       isHoliday: Boolean(isHoliday),
       sessions: sessions || [],
       images: images || [],
-      batch: batch || 'evening'
+      batch: batch || 'evening',
+      facultyRemarks: facultyRemarks || remarks || issueFaced || ''
     });
 
     await report.save();
@@ -166,7 +174,10 @@ router.put('/:id', async (req, res) => {
       isHoliday,
       sessions,
       images,
-      batch
+      batch,
+      facultyRemarks,
+      remarks,
+      issueFaced
     } = req.body;
 
     if (date !== undefined) report.date = date;
@@ -179,6 +190,9 @@ router.put('/:id', async (req, res) => {
     if (sessions !== undefined) report.sessions = sessions;
     if (images !== undefined) report.images = images;
     if (batch !== undefined) report.batch = batch;
+    if (facultyRemarks !== undefined || remarks !== undefined || issueFaced !== undefined) {
+      report.facultyRemarks = facultyRemarks ?? remarks ?? issueFaced ?? '';
+    }
 
     if (date) {
       const computedWeekInfo = getRealTimeWeekInfo(new Date(date));

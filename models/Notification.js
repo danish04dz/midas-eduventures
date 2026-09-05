@@ -18,6 +18,11 @@ const notificationSchema = new mongoose.Schema({
     enum: ['custom', 'timetable', 'period_reminder', 'remark'],
     default: 'custom'
   },
+  batch: {
+    type: String,
+    enum: ['evening', 'morning', 'all'],
+    default: 'evening'
+  },
   senderName: {
     type: String,
     default: 'Main Coordinator (Admin)'
