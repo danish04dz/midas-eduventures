@@ -143,7 +143,7 @@ router.post('/', async (req, res) => {
       formattedDateStr: formattedDateStr || computedWeekInfo.currentDateFormatted,
       day: day || computedWeekInfo.todayDayCode,
       allocatedSessions: Number(allocatedSessions) || 1,
-      takenSessions: Number(takenSessions) || 1,
+      takenSessions: Boolean(isHoliday) ? 0 : (takenSessions !== undefined ? Number(takenSessions) : 1),
       isHoliday: Boolean(isHoliday),
       sessions: sessions || [],
       images: images || [],
@@ -185,8 +185,9 @@ router.put('/:id', async (req, res) => {
     if (day !== undefined) report.day = day;
     if (subject !== undefined) report.subject = subject;
     if (allocatedSessions !== undefined) report.allocatedSessions = Number(allocatedSessions);
-    if (takenSessions !== undefined) report.takenSessions = Number(takenSessions);
     if (isHoliday !== undefined) report.isHoliday = Boolean(isHoliday);
+    if (takenSessions !== undefined) report.takenSessions = report.isHoliday ? 0 : Number(takenSessions);
+    if (report.isHoliday) report.takenSessions = 0;
     if (sessions !== undefined) report.sessions = sessions;
     if (images !== undefined) report.images = images;
     if (batch !== undefined) report.batch = batch;

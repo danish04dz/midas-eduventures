@@ -43,7 +43,18 @@ router.post('/login', async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: 'Invalid credentials' });
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    let isMatch = false;
+    if (user.password.startsWith('$2a$') || user.password.startsWith('$2b$')) {
+      isMatch = await bcrypt.compare(password, user.password);
+    } else {
+      if (user.password === password) {
+        isMatch = true;
+        // Auto-upgrade plain-text password to bcrypt hash in DB
+        user.password = await bcrypt.hash(password, 10);
+        await user.save();
+      }
+    }
+
     if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
     const token = jwt.sign(

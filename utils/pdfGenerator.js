@@ -149,8 +149,8 @@ function generateTimetablePDF(ttData) {
         }
 
         const dInfo = realTimeInfo.dayDates[day];
-        const dayLabel = dInfo 
-          ? `DAY: ${day} (${dInfo.fullDateStr})${dInfo.isToday ? ' [TODAY]' : ''}`
+        const dayLabel = (dInfo && dInfo.isToday)
+          ? `DAY: ${day} (${dInfo.fullDateStr}) [TODAY]`
           : `DAY: ${day}`;
 
         // Day Title Banner
@@ -212,8 +212,8 @@ function generateTimetablePDF(ttData) {
         }
 
         const dInfo = realTimeInfo.dayDates[day];
-        const dayLabel = dInfo 
-          ? `DAY: ${day} (${dInfo.fullDateStr})${dInfo.isToday ? ' [TODAY]' : ''}`
+        const dayLabel = (dInfo && dInfo.isToday)
+          ? `DAY: ${day} (${dInfo.fullDateStr}) [TODAY]`
           : `DAY: ${day}`;
 
         // Day Title Banner
@@ -423,4 +423,322 @@ function drawDailyEntry(doc, report, startY) {
   return y;
 }
 
-module.exports = { generateWeeklyReportPDF, generateTimetablePDF };
+/**
+ * Generates Morning Academic Class-Wise Timetable PDF
+ */
+function generateMorningTimetablePDF(ttData) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape' });
+    const buffers = [];
+
+    doc.on('data', chunk => buffers.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', err => reject(err));
+
+    const realTimeInfo = getRealTimeWeekInfo();
+    let displayWeekTitle = ttData.weekTitle || realTimeInfo.weekTitle;
+
+    const {
+      selectedDay = 'ALL',
+      selectedClass = 'ALL',
+      periodSlots = [],
+      slots = []
+    } = ttData;
+
+    const logoFileToUse = path.join(__dirname, '../../client/src/assets/midas_logo-removebg-preview.png');
+
+    // Header Container Banner
+    doc.rect(40, 25, 760, 65).fillAndStroke('#f8fafc', '#cbd5e1');
+
+    if (fs.existsSync(logoFileToUse)) {
+      try {
+        doc.image(logoFileToUse, 48, 30, { fit: [50, 50] });
+      } catch (e) {
+        drawFallbackLogo(doc);
+      }
+    } else {
+      drawFallbackLogo(doc);
+    }
+
+    doc.font('Helvetica-Bold').fontSize(16).fillColor('#0f172a').text('MIDAS CONCEPT SCHOOL', 110, 34);
+    doc.font('Helvetica-Oblique').fontSize(9).fillColor('#2563eb').text(
+      `Morning Academic Class-Wise Timetable (${selectedClass})`, 
+      110, 54
+    );
+
+    const scopeTitle = selectedDay === 'ALL' 
+      ? `Complete Week Morning Timetable (${selectedClass})`
+      : `Selected Day Morning Timetable: ${selectedDay} (${selectedClass})`;
+
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#0f172a').text(scopeTitle, 0, 34, { align: 'right', width: 780 });
+    doc.font('Helvetica').fontSize(9).fillColor('#475569').text(`Date: ${realTimeInfo.currentDateLong} | ${realTimeInfo.monthName}`, 0, 52, { align: 'right', width: 780 });
+
+    let y = 100;
+    const daysToRender = selectedDay === 'ALL' ? ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] : [selectedDay];
+    const defaultPeriods = periodSlots.length > 0 ? periodSlots : [
+      { slotNumber: 1, label: 'Period 1', timeRange: '8:00 AM - 9:00 AM' },
+      { slotNumber: 2, label: 'Period 2', timeRange: '9:00 AM - 10:00 AM' },
+      { slotNumber: 3, label: 'Period 3', timeRange: '10:00 AM - 11:00 AM' },
+      { slotNumber: 4, label: 'Period 4', timeRange: '11:00 AM - 12:00 PM' }
+    ];
+
+    const morningGroups = (selectedClass === 'Neet Dropper' || selectedClass === 'Jee Dropper')
+      ? [selectedClass]
+      : ['Girls', 'Boys', 'Ultra Zenith'];
+
+    daysToRender.forEach(day => {
+      if (y > 450) {
+        doc.addPage();
+        y = 35;
+      }
+
+      const dInfo = realTimeInfo.dayDates[day];
+      const dayLabel = (dInfo && dInfo.isToday)
+        ? `DAY: ${day} (${dInfo.fullDateStr}) [TODAY]`
+        : `DAY: ${day}`;
+
+      // Day Title Banner
+      doc.rect(40, y, 760, 22).fill('#1e3a8a');
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#ffffff').text(`${dayLabel} - Class: ${selectedClass}`, 50, y + 6);
+      y += 22;
+
+      // Group Column Header
+      doc.rect(40, y, 160, 22).fillAndStroke('#e2e8f0', '#cbd5e1');
+      const groupColHeader = (selectedClass === 'Neet Dropper' || selectedClass === 'Jee Dropper')
+        ? 'BATCH / PERIOD'
+        : 'PERIOD / SUB-GROUP';
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#1e293b').text(groupColHeader, 48, y + 6);
+
+      const maxPeriods = Math.min(defaultPeriods.length, 6);
+      const colWidth = Math.floor(600 / maxPeriods);
+
+      let xP = 200;
+      defaultPeriods.slice(0, maxPeriods).forEach(p => {
+        doc.rect(xP, y, colWidth, 22).fill('#3b82f6');
+        doc.font('Helvetica-Bold').fontSize(8).fillColor('#ffffff').text(`${p.label.toUpperCase()}\n(${p.timeRange})`, xP + 2, y + 3, { align: 'center', width: colWidth - 4 });
+        xP += colWidth;
+      });
+      y += 22;
+
+      // Rows for Groups (Girls, Boys, Ultra Zenith OR Single Dropper Row)
+      morningGroups.forEach(gName => {
+        const cellHeight = 44;
+
+        // Group Name Header Cell
+        doc.rect(40, y, 160, cellHeight).fillAndStroke('#f1f5f9', '#cbd5e1');
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#0f172a').text(gName, 48, y + 10);
+        const groupSubLabel = (selectedClass === 'Neet Dropper' || selectedClass === 'Jee Dropper')
+          ? `${selectedClass} Main Batch`
+          : `${selectedClass} ${gName}`;
+        doc.font('Helvetica').fontSize(7.5).fillColor('#64748b').text(groupSubLabel, 48, y + 24);
+
+        let xOffset = 200;
+        defaultPeriods.slice(0, maxPeriods).forEach(p => {
+          doc.rect(xOffset, y, colWidth, cellHeight).fillAndStroke('#ffffff', '#cbd5e1');
+
+          const slotItem = slots.find(s => 
+            s.day === day && 
+            s.slotNumber === p.slotNumber && 
+            s.groupName === gName &&
+            (selectedClass === 'ALL' || (s.className || 'Class 12') === selectedClass)
+          );
+
+          if (slotItem) {
+            if (slotItem.isSuspended) {
+              doc.rect(xOffset, y, colWidth, cellHeight).fillAndStroke('#fef2f2', '#fca5a5');
+              doc.font('Helvetica-Bold').fontSize(8).fillColor('#991b1b').text('SUSPENDED', xOffset + 4, y + 6, { width: colWidth - 8, align: 'center' });
+              doc.font('Helvetica-Oblique').fontSize(7).fillColor('#b91c1c').text(slotItem.suspendReason || 'Suspended', xOffset + 4, y + 18, { width: colWidth - 8, align: 'center' });
+            } else {
+              doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a').text(slotItem.subject || 'Period', xOffset + 6, y + 5, { width: colWidth - 12 });
+              doc.font('Helvetica-Bold').fontSize(8).fillColor('#2563eb').text(slotItem.facultyName || 'TBA', xOffset + 6, y + 18);
+              if (slotItem.roomNo) {
+                doc.font('Helvetica').fontSize(7.5).fillColor('#475569').text(`Room: ${slotItem.roomNo}`, xOffset + 6, y + 30);
+              }
+            }
+          } else {
+            doc.font('Helvetica-Oblique').fontSize(8).fillColor('#94a3b8').text('Unassigned', xOffset + colWidth / 2 - 25, y + 16);
+          }
+
+          xOffset += colWidth;
+        });
+
+        y += cellHeight;
+      });
+
+      y += 12;
+    });
+
+    const range = doc.bufferedPageRange();
+    for (let i = range.start; i < range.start + range.count; i++) {
+      doc.switchToPage(i);
+      doc.fontSize(8).fillColor('#94a3b8').text(
+        `Midas Eduventures © 2026 | Generated on ${new Date().toLocaleDateString()} | Page ${i + 1} of ${range.count}`,
+        40,
+        doc.page.height - 30,
+        { align: 'center', width: doc.page.width - 80 }
+      );
+    }
+
+    doc.end();
+  });
+}
+
+/**
+ * Generates Morning Academic Daily Curriculum Reports PDF.
+ */
+function generateMorningReportsPDF(reportData) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    const buffers = [];
+
+    doc.on('data', chunk => buffers.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', err => reject(err));
+
+    const realTimeInfo = getRealTimeWeekInfo();
+    const {
+      schoolName = 'MIDAS CONCEPT SCHOOL',
+      title = 'Morning Academic Daily Curriculum Progress Report',
+      filterDay = 'ALL',
+      filterClass = 'ALL',
+      filterGroup = 'ALL',
+      filterFaculty = 'ALL',
+      filterDate = '',
+      dailyReports = []
+    } = reportData;
+
+    const logoFileToUse = path.join(__dirname, '../../client/src/assets/midas_logo-removebg-preview.png');
+
+    // Header Container Banner
+    doc.rect(40, 25, 515, 65).fillAndStroke('#f8fafc', '#cbd5e1');
+
+    if (fs.existsSync(logoFileToUse)) {
+      try {
+        doc.image(logoFileToUse, 48, 30, { fit: [50, 50] });
+      } catch (e) {
+        drawFallbackLogo(doc);
+      }
+    } else {
+      drawFallbackLogo(doc);
+    }
+
+    doc.font('Helvetica-Bold').fontSize(15).fillColor('#0f172a').text(schoolName, 110, 32);
+    doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#2563eb').text(title, 110, 50);
+
+    const filterSubtitle = `Day: ${filterDay} | Class: ${filterClass} | Group: ${filterGroup} | Faculty: ${filterFaculty}`;
+    doc.font('Helvetica').fontSize(8).fillColor('#475569').text(filterSubtitle, 110, 64, { width: 430 });
+
+    let y = 105;
+
+    if (!dailyReports || dailyReports.length === 0) {
+      doc.fontSize(11).font('Helvetica-Oblique').fillColor('#64748b').text('No morning daily reports found matching current filters.', 40, y);
+    } else {
+      dailyReports.forEach((report) => {
+        if (y > 670) {
+          doc.addPage();
+          y = 40;
+        }
+
+        // Report Container Box Header
+        doc.rect(40, y, 515, 22).fill('#1e3a8a');
+        const headerText = `${report.date || ''} (${report.day || ''}) • ${report.className || 'Class 12'} (${report.groupName || 'Girls'}) - ${report.facultyName || 'Faculty'} [${report.subject || 'Physics'}]`;
+        doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#ffffff').text(headerText, 48, y + 6, { width: 500 });
+        y += 22;
+
+        // Details Box
+        doc.rect(40, y, 515, 24).fillAndStroke('#f1f5f9', '#cbd5e1');
+        doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#1e293b').text(`Present Students: ${report.presentStudentsCount ?? report.presentStudents ?? 0}`, 48, y + 7);
+        doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#1e293b').text(`Status: ${report.status === 'reviewed' ? 'Reviewed' : 'Submitted'}`, 300, y + 7);
+        y += 24;
+
+        if (report.periods && report.periods.length > 0) {
+          report.periods.forEach((p, pIdx) => {
+            if (y > 700) {
+              doc.addPage();
+              y = 40;
+            }
+            doc.font('Helvetica-Bold').fontSize(9).fillColor('#1e3a8a').text(`Period #${p.periodNumber || pIdx + 1} (${p.timeRange || ''}) • Present: ${p.presentStudents !== undefined ? p.presentStudents : 'N/A'}`, 48, y);
+            y += 12;
+            if (p.topic) {
+              doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a').text(`Topic: ${p.topic}`, 56, y, { width: 480 });
+              y += doc.heightOfString(`Topic: ${p.topic}`, { width: 480 }) + 4;
+            }
+            if (p.summaryPoints && p.summaryPoints.length > 0) {
+              doc.font('Helvetica').fontSize(8).fillColor('#334155');
+              p.summaryPoints.forEach(pt => {
+                if (pt && pt.trim()) {
+                  doc.text(`•  ${pt.trim()}`, 64, y, { width: 470 });
+                  y += doc.heightOfString(`•  ${pt.trim()}`, { width: 470 }) + 2;
+                }
+              });
+            }
+            if (p.homework) {
+              doc.font('Helvetica-Oblique').fontSize(8).fillColor('#4338ca').text(`Homework: ${p.homework}`, 56, y, { width: 480 });
+              y += doc.heightOfString(`Homework: ${p.homework}`, { width: 480 }) + 4;
+            }
+            y += 4;
+          });
+        } else {
+          if (report.topic) {
+            if (y > 720) { doc.addPage(); y = 40; }
+            doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#0f172a').text(`Topic Covered: `, 48, y);
+            doc.font('Helvetica').fontSize(9.5).fillColor('#1e293b').text(report.topic, 130, y, { width: 410 });
+            y += doc.heightOfString(report.topic, { width: 410 }) + 6;
+          }
+
+          if (report.summaryPoints && report.summaryPoints.length > 0) {
+            if (y > 720) { doc.addPage(); y = 40; }
+            doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#334155').text('Summary Points:', 48, y);
+            y += 12;
+            doc.font('Helvetica').fontSize(8.5).fillColor('#334155');
+            report.summaryPoints.forEach(pt => {
+              if (pt && pt.trim()) {
+                doc.text(`•  ${pt.trim()}`, 56, y, { width: 480 });
+                y += doc.heightOfString(`•  ${pt.trim()}`, { width: 480 }) + 2;
+              }
+            });
+            y += 4;
+          }
+        }
+
+        // Classroom Issue / Faculty Remark (Red box if present)
+        const activeIssue = report.classIssue || report.facultyRemarks;
+        if (activeIssue) {
+          if (y > 700) { doc.addPage(); y = 40; }
+          const issueText = `Faculty Issue / Remarks: ${activeIssue}`;
+          const issueHeight = Math.max(20, doc.heightOfString(issueText, { width: 495 }) + 8);
+          doc.rect(40, y, 515, issueHeight).fillAndStroke('#fef2f2', '#fca5a5');
+          doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#991b1b').text(issueText, 48, y + 5, { width: 495 });
+          y += issueHeight + 6;
+        }
+
+        // Principal Remark (Purple box if present)
+        if (report.principalRemark) {
+          if (y > 700) { doc.addPage(); y = 40; }
+          const remarkText = `Principal / Admin Remark (${report.remarkBy || 'Principal'}): "${report.principalRemark}"`;
+          const remarkHeight = Math.max(20, doc.heightOfString(remarkText, { width: 495 }) + 8);
+          doc.rect(40, y, 515, remarkHeight).fillAndStroke('#faf5ff', '#d8b4fe');
+          doc.font('Helvetica-BoldOblique').fontSize(8.5).fillColor('#6b21a8').text(remarkText, 48, y + 5, { width: 495 });
+          y += remarkHeight + 6;
+        }
+
+        y += 14;
+      });
+    }
+
+    const range = doc.bufferedPageRange();
+    for (let i = range.start; i < range.start + range.count; i++) {
+      doc.switchToPage(i);
+      doc.fontSize(8).fillColor('#94a3b8').text(
+        `Midas Eduventures © 2026 | Generated on ${new Date().toLocaleDateString()} | Page ${i + 1} of ${range.count}`,
+        40,
+        doc.page.height - 30,
+        { align: 'center', width: doc.page.width - 80 }
+      );
+    }
+
+    doc.end();
+  });
+}
+
+module.exports = { generateWeeklyReportPDF, generateTimetablePDF, generateMorningTimetablePDF, generateMorningReportsPDF };

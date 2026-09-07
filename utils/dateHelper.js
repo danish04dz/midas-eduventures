@@ -45,12 +45,26 @@ function getRealTimeWeekInfo(dateInput = new Date()) {
     dayDates[code] = {
       dateStr: formatDateShort(dayDate),
       fullDateStr: formatDateFull(dayDate),
-      isToday: code === todayDayCode
+      isToday: code === todayDayCode,
+      isWeeklyOff: false
     };
   });
 
+  const sundayDate = new Date(monday);
+  sundayDate.setDate(monday.getDate() + 6);
+  dayDates['SUN'] = {
+    dateStr: formatDateShort(sundayDate),
+    fullDateStr: formatDateFull(sundayDate),
+    isToday: todayDayCode === 'SUN',
+    isWeeklyOff: true
+  };
+
+  const isSunday = dayOfWeek === 0;
+
   return {
     todayDayCode,
+    isSunday,
+    isWeeklyOff: isSunday,
     weekTitle,
     monthName,
     monthYearStr,
