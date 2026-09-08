@@ -741,4 +741,80 @@ function generateMorningReportsPDF(reportData) {
   });
 }
 
-module.exports = { generateWeeklyReportPDF, generateTimetablePDF, generateMorningTimetablePDF, generateMorningReportsPDF };
+function generateMorningPunchRecordsPDF(date, records) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    const buffers = [];
+
+    doc.on('data', chunk => buffers.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', err => reject(err));
+
+    const logoFileToUse = path.join(__dirname, '../../client/src/assets/midas_logo-removebg-preview.png');
+    
+    // Header
+    try {
+      if (fs.existsSync(logoFileToUse)) {
+        doc.image(logoFileToUse, 40, 30, { width: 50 });
+      }
+    } catch(err) {}
+
+    doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a').text('MIDAS CONCEPT SCHOOL', 100, 35);
+    doc.fontSize(10).font('Helvetica').fillColor('#64748b').text('Morning Faculty Punch Records', 100, 55);
+    
+    doc.moveDown();
+    doc.fontSize(12).font('Helvetica-Bold').fillColor('#334155').text(`Date: ${date}`, 40, 90);
+    
+    let y = 120;
+    
+    // Table Header
+    doc.rect(40, y, doc.page.width - 80, 25).fill('#f1f5f9');
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#475569');
+    doc.text('Faculty Name', 45, y + 8);
+    doc.text('Classroom', 180, y + 8);
+    doc.text('Punch In', 320, y + 8);
+    doc.text('Punch Out', 400, y + 8);
+    doc.text('Duration', 480, y + 8);
+    
+    y += 25;
+    
+    // Table Rows
+    doc.font('Helvetica').fillColor('#334155').fontSize(9);
+    records.forEach(record => {
+      if (y > doc.page.height - 80) {
+        doc.addPage();
+        y = 40;
+      }
+      
+      const punchInTime = new Date(record.punchInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const punchOutTime = record.punchOutTime ? new Date(record.punchOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Active';
+      const duration = record.durationMinutes ? `${record.durationMinutes} mins` : '-';
+      const facultyName = record.faculty?.name || 'Unknown';
+      const classInfo = `${record.className} (R${record.classroomNumber})`;
+      
+      doc.text(facultyName, 45, y + 8, { width: 125, height: 12 });
+      doc.text(classInfo, 180, y + 8, { width: 130, height: 12 });
+      doc.text(punchInTime, 320, y + 8);
+      doc.text(punchOutTime, 400, y + 8);
+      doc.text(duration, 480, y + 8);
+      
+      doc.rect(40, y + 24, doc.page.width - 80, 1).fill('#e2e8f0');
+      y += 25;
+    });
+
+    const range = doc.bufferedPageRange();
+    for (let i = range.start; i < range.start + range.count; i++) {
+      doc.switchToPage(i);
+      doc.fontSize(8).fillColor('#94a3b8').text(
+        `Generated on ${new Date().toLocaleDateString()} | Page ${i + 1} of ${range.count}`,
+        40,
+        doc.page.height - 30,
+        { align: 'center', width: doc.page.width - 80 }
+      );
+    }
+
+    doc.end();
+  });
+}
+
+module.exports = { generateWeeklyReportPDF, generateTimetablePDF, generateMorningTimetablePDF, generateMorningReportsPDF, generateMorningPunchRecordsPDF };

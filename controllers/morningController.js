@@ -4,6 +4,7 @@ const MorningTimetable = require('../models/MorningTimetable');
 const Assignment = require('../models/Assignment');
 const { getRealTimeWeekInfo } = require('../utils/dateHelper');
 const { generateMorningTimetablePDF, generateMorningReportsPDF } = require('../utils/pdfGenerator');
+const { sendFacultyWelcomeEmail } = require('../utils/emailService');
 const bcrypt = require('bcryptjs');
 
 // Initial default configuration for Morning Timetable
@@ -198,7 +199,9 @@ exports.registerMorningFaculty = async (req, res) => {
       return res.status(400).json({ message: 'User with this email already exists' });
     }
 
-    const hashedPassword = await bcrypt.hash(password || 'password123', 10);
+    const rawPassword = password || 'password123';
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
+    const secretCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     const faculty = new User({
       name,
@@ -207,10 +210,20 @@ exports.registerMorningFaculty = async (req, res) => {
       role: 'faculty',
       subject: subject || 'Morning Physics',
       designation: designation || 'Morning Faculty Lead',
-      batch: 'morning'
+      batch: 'morning',
+      secretCode: secretCode
     });
 
     await faculty.save();
+
+    // Send Welcome Email asynchronously
+    sendFacultyWelcomeEmail({
+      facultyName: name,
+      email: email,
+      password: rawPassword,
+      secretCode: secretCode
+    }).catch(err => console.error('[Email Error] Failed to send welcome email:', err));
+
     res.status(201).json({ message: `Morning Faculty "${name}" registered successfully!`, faculty });
   } catch (err) {
     res.status(500).json({ message: err.message });

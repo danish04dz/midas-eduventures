@@ -14,4 +14,7 @@ router.get('/faculties', eveningController.getEveningFaculties);
 // GET /api/evening/admins
 router.get('/admins', eveningController.getEveningAdmins);
 
+// POST /api/evening/announce
+router.post('/announce', eveningController.sendAnnouncement);
+
 module.exports = router;

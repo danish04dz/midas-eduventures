@@ -3,21 +3,29 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const { sendFacultyWelcomeEmail, sendEveningFacultyWelcomeEmail } = require('../utils/emailService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'midas_eduventures_super_secret_jwt_key_2026';
 
-// Register User (Faculty or Admin)
-// Register User (Faculty, Morning Admin, or Admin)
+// Register User (Faculty, Admin, or Panel)
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, role, subject, designation, batch } = req.body;
+    const { name, email, password, role, subject, designation, batch, classroomNumber, className } = req.body;
     let user = await User.findOne({ email });
     if (user) return res.status(400).json({ message: 'User with this email already exists' });
 
-    const hashedPassword = await bcrypt.hash(password || 'password123', 10);
+    const rawPassword = password || 'password123';
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
+    
     let assignedBatch = batch || 'evening';
     if (role === 'morning_admin') assignedBatch = 'morning';
     if (role === 'admin') assignedBatch = 'evening';
+
+    let secretCode = undefined;
+    if (role === 'faculty' && assignedBatch === 'morning') {
+      // Auto-generate 6-digit secret code
+      secretCode = Math.floor(100000 + Math.random() * 900000).toString();
+    }
 
     user = new User({
       name,
@@ -26,11 +34,32 @@ router.post('/register', async (req, res) => {
       role: role || 'faculty',
       subject: subject || '',
       designation: designation || 'Faculty Member',
-      batch: assignedBatch
+      batch: assignedBatch,
+      classroomNumber: classroomNumber || '',
+      className: className || '',
+      secretCode
     });
 
     await user.save();
-    res.status(201).json({ message: 'User registered successfully', user: { id: user._id, name: user.name, email: user.email, role: user.role, batch: user.batch } });
+
+    if (role === 'faculty') {
+      if (assignedBatch === 'morning') {
+        sendFacultyWelcomeEmail({
+          facultyName: name,
+          email: email,
+          password: rawPassword,
+          secretCode: secretCode
+        }).catch(err => console.error('[Email Error] Failed to send morning welcome email:', err));
+      } else if (assignedBatch === 'evening') {
+        sendEveningFacultyWelcomeEmail({
+          facultyName: name,
+          email: email,
+          password: rawPassword
+        }).catch(err => console.error('[Email Error] Failed to send evening welcome email:', err));
+      }
+    }
+
+    res.status(201).json({ message: 'User registered successfully', user: { id: user._id, name: user.name, email: user.email, role: user.role, batch: user.batch, classroomNumber: user.classroomNumber } });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -121,6 +150,16 @@ router.put('/update-profile', async (req, res) => {
         designation: user.designation
       }
     });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Get all panel users
+router.get('/panels', async (req, res) => {
+  try {
+    const panels = await User.find({ role: 'panel' }).select('-password').sort({ createdAt: -1 });
+    res.json(panels);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

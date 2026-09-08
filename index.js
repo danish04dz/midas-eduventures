@@ -13,7 +13,9 @@ const reportRoutes = require('./routes/reportRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const eveningRoutes = require('./routes/eveningRoutes');
 const morningRoutes = require('./routes/morningRoutes');
-
+const punchRoutes = require('./routes/punchRoutes');
+const eveningPunchRoutes = require('./routes/eveningPunchRoutes');
+const settingsRoutes = require('./routes/settingsRoutes');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -52,6 +54,9 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/evening', eveningRoutes);
 app.use('/api/morning', morningRoutes);
+app.use('/api/punch', punchRoutes);
+app.use('/api/evening-punch', eveningPunchRoutes);
+app.use('/api/settings', settingsRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ 

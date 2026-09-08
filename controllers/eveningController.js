@@ -2,6 +2,7 @@ const User = require('../models/User');
 const DailyReport = require('../models/DailyReport');
 const Timetable = require('../models/Timetable');
 const { getRealTimeWeekInfo } = require('../utils/dateHelper');
+const { sendEveningFeatureAnnouncementEmail } = require('../utils/emailService');
 
 // GET Evening Master Timetable
 exports.getEveningTimetable = async (req, res) => {
@@ -77,6 +78,24 @@ exports.getEveningAdmins = async (req, res) => {
     const filter = { role: 'admin' };
     const admins = await User.find(filter).select('-password').sort({ createdAt: -1 });
     res.json(admins);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// POST Announce Feature to Faculty
+exports.sendAnnouncement = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const faculty = await User.findOne({ email });
+    if (!faculty) {
+      return res.status(404).json({ message: 'Faculty not found.' });
+    }
+    await sendEveningFeatureAnnouncementEmail({
+      facultyName: faculty.name,
+      email: faculty.email
+    });
+    res.json({ message: `Announcement sent to ${faculty.email}` });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
